@@ -39,13 +39,13 @@ def main():
 
         # Save the filtered data to a TSV file and liked 
         if i == 'illumina':
-            output_file = f"illumina.index.{str(args.date)}.tsv"
+            output_file = f"prepro/illumina.index.{str(args.date)}.tsv"
             filtered_data.to_csv(output_file, sep="\t", index=False)
-            #os.system(" ln -sf  "+output_file+"  illumina.index.tsv")
+            os.system(" ln -sf  "+output_file+"  prepro/illumina.index.tsv")
         else:
-            output_file = f"nanopore.index.{str(args.date)}.tsv"
+            output_file = f"prepro/nanopore.index.{str(args.date)}.tsv"
             filtered_data.to_csv(output_file, sep="\t", index=False)
-            #os.system(" ln -sf  "+output_file+"  nanopore.index.tsv")
+            os.system(" ln -sf  "+output_file+"  prepro/nanopore.index.tsv")
         
         
 
