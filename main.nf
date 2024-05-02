@@ -1,12 +1,15 @@
 #!/usr/bin/env nextflow
 
-//params.SARS2_FA = "gs://prj-int-dev-covid19-nf-gls/data/NC_045512.2.fa"
-//params.SARS2_FA_FAI = "gs://prj-int-dev-covid19-nf-gls/data/NC_045512.2.fa.fai"
-//params.SECRETS = "gs://prj-int-dev-covid19-nf-gls/prepro/projects_accounts.csv"
+workflowPath = "/nfs/production/cochrane/ena/users/khadim/project/ena-covid-systematic-analysis-workflow"
 
-params.INDEX = "/hps/nobackup/cochrane/ena/users/azyoud/software/systematicAnalysisWorkflow/covid-sequence-analysis-workflow/prepro/illumina.index.tsv"
-params.STOREDIR = "/hps/nobackup/cochrane/ena/users/azyoud/software/systematicAnalysisWorkflow/covid-sequence-analysis-workflow/prepro/storeDir"
-params.OUTDIR = "/hps/nobackup/cochrane/ena/users/azyoud/software/systematicAnalysisWorkflow/covid-sequence-analysis-workflow/prepro/results"
+
+params.SARS2_FA = "$workflowPath/data/NC_045512.2.fa"
+params.SARS2_FA_FAI = "$workflowPath/data/NC_045512.2.fa.fai"
+params.SECRETS = "$workflowPath/prepro/projects_accounts.csv"
+
+params.INDEX = "$workflowPath/prepro/illumina.index.tsv"
+params.STOREDIR = "$workflowPath/prepro/storeDir"
+params.OUTDIR = "$workflowPath/prepro/results"
 
 params.STUDY = 'PRJEB45555'
 
@@ -15,15 +18,13 @@ nextflow.enable.dsl = 2
 process map_to_reference {
     storeDir params.STOREDIR
 
-    cpus 6
-    memory '8 GB'
     container 'davidyuyuan/ena-sars-cov2-illumina:1.0'
 
     input:
     tuple val(run_accession), val(sample_accession), file(input_file_1), file(input_file_2) //from samples_ch
     path(sars2_fasta)
     path(sars2_fasta_fai)
-    path(projects_accounts_csv)
+    path(projects_accounts_csv)     
     val(study_accession)
 
     output:
@@ -85,7 +86,6 @@ process map_to_reference {
 // Same process duplicated in both pipelines due to a limitation in Nextflow
 process ena_analysis_submit {
     publishDir params.OUTDIR, mode: 'move'
-    storeDir params.STOREDIR
 
     container 'davidyuyuan/ena-analysis-submitter:2.0'
 
@@ -98,30 +98,27 @@ process ena_analysis_submit {
     path(projects_accounts_csv)
     val(study_accession)
 
-    output:
-    file("${run_accession}_output/${study_accession}/${run_accession}_output.tar.gz")
-    file("${run_accession}_output/${study_accession}/${run_accession}_filtered.vcf.gz")
-    file("${run_accession}_output/${study_accession}/${run_accession}_consensus.fasta.gz")
-    file("${run_accession}_output/${study_accession}/successful_submissions.txt")
-
     script:
     """
     line="\$(grep ${study_accession} ${projects_accounts_csv})"
     webin_id="\$(echo \${line} | cut -d ',' -f 4)"
     webin_password="\$(echo \${line} | cut -d ',' -f 5)"
     
-    mkdir -p ${run_accession}_output/${study_accession}
-    cp /hps/nobackup/cochrane/ena/users/azyoud/software/systematicAnalysisWorkflow/covid-sequence-analysis-workflow/bin/config.yaml ${run_accession}_output/${study_accession}
+    mkdir -p $workflowPath/prepro/results/${run_accession}_output/${study_accession}
+    cp $workflowPath/bin/config.yaml $workflowPath/prepro/results/${run_accession}_output/${study_accession}
+    cp ${workflowPath}/prepro/storeDir/${run_accession}_output.tar.gz ${workflowPath}/prepro/storeDir/${run_accession}_filtered.vcf.gz  ${workflowPath}/prepro/storeDir/${run_accession}_consensus.fasta.gz /fire/staging/era/upload/\${webin_id}
+    mv ${workflowPath}/prepro/storeDir/${run_accession}_output.tar.gz ${workflowPath}/prepro/storeDir/${run_accession}_filtered.vcf.gz  ${workflowPath}/prepro/storeDir/${run_accession}_consensus.fasta.gz $workflowPath/prepro/results/${run_accession}_output/${study_accession}
+
     if [ "${study_accession}" = 'PRJEB45555' ]; then
-        analysis_submission.py -t true -o ${run_accession}_output/${study_accession} -p PRJEB43947 -s ${sample_accession} -r ${run_accession} -f ${output_tgz} -a PATHOGEN_ANALYSIS -au \${webin_id} -ap \${webin_password}
-        analysis_submission.py -t true -o ${run_accession}_output/${study_accession} -p PRJEB45554 -s ${sample_accession} -r ${run_accession} -f ${filtered_vcf_gz} -a COVID19_FILTERED_VCF -au \${webin_id} -ap \${webin_password}
-        analysis_submission.py -t true -o ${run_accession}_output/${study_accession} -p PRJEB45619 -s ${sample_accession} -r ${run_accession} -f ${consensus_fasta_gz} -a COVID19_CONSENSUS -au \${webin_id} -ap \${webin_password}
+        $workflowPath/ena-analysis-submitter.py -t  -p PRJEB43947 -s ${sample_accession} -r ${run_accession} -f ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${output_tgz} -a PATHOGEN_ANALYSIS -au \${webin_id} -ap \${webin_password} > ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${output_tgz}_submit.txt
+        $workflowPath/ena-analysis-submitter.py -t  -p PRJEB45554 -s ${sample_accession} -r ${run_accession} -f ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${filtered_vcf_gz} -a COVID19_FILTERED_VCF -au \${webin_id} -ap \${webin_password} > ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${filtered_vcf_gz}_submit.txt
+        $workflowPath/ena-analysis-submitter.py -t  -p PRJEB45619 -s ${sample_accession} -r ${run_accession} -f ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${consensus_fasta_gz} -a COVID19_CONSENSUS -au \${webin_id} -ap \${webin_password} > ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${consensus_fasta_gz}_submit.txt
     else
-        analysis_submission.py -t true -o ${run_accession}_output/${study_accession} -p ${study_accession} -s ${sample_accession} -r ${run_accession} -f ${output_tgz} -a PATHOGEN_ANALYSIS -au \${webin_id} -ap \${webin_password}
-        analysis_submission.py -t true -o ${run_accession}_output/${study_accession} -p ${study_accession} -s ${sample_accession} -r ${run_accession} -f ${filtered_vcf_gz} -a COVID19_FILTERED_VCF -au \${webin_id} -ap \${webin_password}
-        analysis_submission.py -t true -o ${run_accession}_output/${study_accession} -p ${study_accession} -s ${sample_accession} -r ${run_accession} -f ${consensus_fasta_gz} -a COVID19_CONSENSUS -au \${webin_id} -ap \${webin_password}
+        $workflowPath/ena-analysis-submitter.py -t  -p ${study_accession} -s ${sample_accession} -r ${run_accession} -f ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${output_tgz} -a PATHOGEN_ANALYSIS -au \${webin_id} -ap \${webin_password} > ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${output_tgz}_submit.txt
+        $workflowPath/ena-analysis-submitter.py -t  -p ${study_accession} -s ${sample_accession} -r ${run_accession} -f ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${filtered_vcf_gz} -a COVID19_FILTERED_VCF -au \${webin_id} -ap \${webin_password} > ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${filtered_vcf_gz}_submit.txt
+        $workflowPath/ena-analysis-submitter.py -t  -p ${study_accession} -s ${sample_accession} -r ${run_accession} -f ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${consensus_fasta_gz} -a COVID19_CONSENSUS -au \${webin_id} -ap \${webin_password} > ${workflowPath}/prepro/results/${run_accession}_output/${study_accession}/${consensus_fasta_gz}_submit.txt
     fi
-    mv ${output_tgz} ${filtered_vcf_gz} ${consensus_fasta_gz} ${run_accession}_output/${study_accession}
+
     """
 }
 
